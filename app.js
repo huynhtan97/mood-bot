@@ -1,24 +1,22 @@
 /**
- * Copyright 2015 IBM Corp. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Main code for An Chat Bot
  */
 
+ // For linting code
 'use strict';
 
-var express = require('express'); // app server
-var bodyParser = require('body-parser'); // parser for post requests
-var AssistantV2 = require('watson-developer-cloud/assistant/v2'); // watson sdk
+// app server - expressjs
+var express = require('express');
+// parser for post requests
+var bodyParser = require('body-parser');
+// watson assistant sdk
+var AssistantV2 = require('watson-developer-cloud/assistant/v2'); 
+const ToneAnalyzerV3 = require('watson-developer-cloud/tone-analyzer/v3');
+// tone detector code
+const toneDetection = require('./addons/tone_detection'); 
+// interceptor added to parse mood and weather messages
+const responseInterceptors = require('./responseInterceptor'); 
+const maintainToneHistory = true;
 
 var app = express();
 
@@ -26,16 +24,26 @@ var app = express();
 app.use(express.static('./public')); // load UI from public folder
 app.use(bodyParser.json());
 
-// Create the service wrapper
-
 var assistant = new AssistantV2({
   version: '2018-11-08'
+});
+
+// Instantiate the Watson Tone Analyzer Service as per WDC 2.2.0
+var toneAnalyzer = new ToneAnalyzerV3({
+  version: '2017-09-21'
 });
 
 var newContext = {
   global : {
     system : {
       turn_count : 1
+    }
+  },
+  skills: {
+    "main skill": {
+      user_defined: {
+        userTone: {}
+      }
     }
   }
 };
@@ -54,9 +62,7 @@ app.post('/api/message', function (req, res) {
 
   if (req.body.context) {
     contextWithAcc.global.system.turn_count += 1;
-  }
-
-  //console.log(JSON.stringify(contextWithAcc, null, 2));
+  } 
 
   var textIn = '';
 
@@ -64,6 +70,7 @@ app.post('/api/message', function (req, res) {
     textIn = req.body.input.text;
   }
 
+  // The user's information being sent to Watson Assistant 
   var payload = {
     assistant_id: assistantId,
     session_id: req.body.session_id,
@@ -78,12 +85,19 @@ app.post('/api/message', function (req, res) {
   };
 
   // Send the input to the assistant service
-  assistant.message(payload, function (err, data) {
-    if (err) {
-      return res.status(err.code || 500).json(err);
-    }
-
-    return res.json(data);
+  toneDetection.invokeToneAsync(payload, toneAnalyzer).then(function(tone) {
+    toneDetection.updateUserTone(payload, tone, maintainToneHistory);
+    assistant.message(payload, function (err, data) {
+      if (err) {
+        return res.status(err.code || 500).json(err);
+      }
+      // Sends user's inputs to responseInterceptor.js to be processed by Weather and Tone Analyzer API
+      responseInterceptors(data).then(newData => {
+        return res.json(newData);
+      }).catch(err => {
+        return res.json(data);
+      });
+    });
   });
 });
 
@@ -99,4 +113,5 @@ app.get('/api/session', function (req, res) {
   });
 });
 
+// If you require('app.js'), you get app
 module.exports = app;

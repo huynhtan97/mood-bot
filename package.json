@@ -19,9 +19,13 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "apixu": "apixu/apixu-nodejs",
+    "axios": "^0.18.0",
+    "bluebird": "^3.5.3",
     "body-parser": "^1.18.3",
     "dotenv": "^6.1.0",
     "express": "^4.16.4",
+    "moment": "^2.24.0",
     "watson-developer-cloud": "^3.15.0"
   },
   "publishConfig": {
